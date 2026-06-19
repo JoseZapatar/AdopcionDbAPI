@@ -1,0 +1,6 @@
+@AdopcionDbAPI_HostAddress = http://localhost:5051
+
+GET {{AdopcionDbAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
