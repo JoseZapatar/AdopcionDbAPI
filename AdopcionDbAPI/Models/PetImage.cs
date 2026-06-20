@@ -23,6 +23,6 @@ public partial class PetImage
     public DateTime createdAt { get; set; }
 
     [ForeignKey("petId")]
-    [InverseProperty("PetImage")]
+    [InverseProperty("PetImages")]
     public virtual Pet pet { get; set; } = null!;
 }

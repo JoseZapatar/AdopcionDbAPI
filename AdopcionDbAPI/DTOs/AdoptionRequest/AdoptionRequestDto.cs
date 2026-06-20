@@ -1,36 +1,29 @@
-﻿using System;
-using System.ComponentModel.DataAnnotations;
-using Microsoft.EntityFrameworkCore;
+﻿namespace AdopcionDbAPI.DTOs.AdoptionRequests;
 
-namespace AdopcionDbAPI.Models;
-
-[Keyless]
-public partial class vw_AdoptionRequestDetail
+public class AdoptionRequestDto
 {
-    public int requestId { get; set; }
+    public int id { get; set; }
 
-    [StringLength(100)]
+    public int adopterId { get; set; }
+
     public string adopterName { get; set; } = null!;
 
-    [StringLength(150)]
-    public string email { get; set; } = null!;
+    public string adopterEmail { get; set; } = null!;
 
-    [StringLength(30)]
-    public string? phone { get; set; }
+    public string? adopterPhone { get; set; }
 
-    [StringLength(100)]
-    public string? city { get; set; }
+    public string? adopterCity { get; set; }
 
-    [StringLength(100)]
+    public int petId { get; set; }
+
     public string petName { get; set; } = null!;
 
-    [StringLength(50)]
     public string speciesName { get; set; } = null!;
 
-    [StringLength(100)]
     public string? breedName { get; set; }
 
-    [StringLength(50)]
+    public int statusId { get; set; }
+
     public string requestStatus { get; set; } = null!;
 
     public string? message { get; set; }
@@ -41,11 +34,9 @@ public partial class vw_AdoptionRequestDetail
 
     public int? reviewedByUserId { get; set; }
 
-    [StringLength(100)]
     public string? reviewedByUserName { get; set; }
 
     public DateTime? reviewedAt { get; set; }
 
-    [StringLength(1000)]
     public string? decisionNotes { get; set; }
 }

@@ -33,11 +33,22 @@ public partial class Pet
 
     public int? breedId { get; set; }
 
+    public bool isVaccinated { get; set; }
+
+    public bool isSterilized { get; set; }
+
+    public bool isDewormed { get; set; }
+
+    [StringLength(1000)]
+    public string? medicalNotes { get; set; }
+
+    public DateOnly? rescuedAt { get; set; }
+
     [InverseProperty("pet")]
     public virtual ICollection<AdoptionRequest> AdoptionRequests { get; set; } = new List<AdoptionRequest>();
 
     [InverseProperty("pet")]
-    public virtual PetImage? PetImage { get; set; }
+    public virtual ICollection<PetImage> PetImages { get; set; } = new List<PetImage>();
 
     [InverseProperty("pet")]
     public virtual ICollection<Review> Reviews { get; set; } = new List<Review>();

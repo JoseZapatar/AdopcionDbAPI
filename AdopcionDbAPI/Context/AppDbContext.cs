@@ -61,33 +61,62 @@
                     .HasConstraintName("FK_Adopters_Users");
             });
 
-            modelBuilder.Entity<AdoptionRequest>(entity =>
+        modelBuilder.Entity<AdoptionRequest>(entity =>
+        {
+            entity.HasKey(e => e.id)
+                .HasName("PK__Adoption__3213E83F9E71C7F3");
+
+            entity.ToTable(tb =>
             {
-                entity.HasKey(e => e.id).HasName("PK__Adoption__3213E83F9E71C7F3");
-
-                entity.ToTable(tb =>
-                    {
-                        tb.HasTrigger("trg_AdoptionRequests_Audit_Delete");
-                        tb.HasTrigger("trg_AdoptionRequests_AutoPetStatus");
-                    });
-
-                entity.Property(e => e.createdAt).HasDefaultValueSql("(sysutcdatetime())");
-                entity.Property(e => e.statusId).HasDefaultValue(1, "DF_AdoptionRequests_StatusId");
-
-                entity.HasOne(d => d.adopter).WithMany(p => p.AdoptionRequests)
-                    .OnDelete(DeleteBehavior.ClientSetNull)
-                    .HasConstraintName("FK_AdoptionRequests_Adopters");
-
-                entity.HasOne(d => d.pet).WithMany(p => p.AdoptionRequests)
-                    .OnDelete(DeleteBehavior.ClientSetNull)
-                    .HasConstraintName("FK_AdoptionRequests_Pets");
-
-                entity.HasOne(d => d.status).WithMany(p => p.AdoptionRequests)
-                    .OnDelete(DeleteBehavior.ClientSetNull)
-                    .HasConstraintName("FK_AdoptionRequests_RequestStatuses");
+                tb.HasTrigger("trg_AdoptionRequests_Audit_Delete");
+                tb.HasTrigger("trg_AdoptionRequests_AutoPetStatus");
             });
 
-            modelBuilder.Entity<AuditLog>(entity =>
+            entity.Property(e => e.createdAt)
+                .HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.Property(e => e.statusId)
+            .HasDefaultValue(1);
+
+            entity.Property(e => e.decisionNotes)
+                .HasMaxLength(1000);
+
+            entity.HasIndex(e => e.reviewedByUserId, "IX_AdoptionRequests_ReviewedByUserId");
+
+            entity.HasOne(d => d.adopter)
+                .WithMany(p => p.AdoptionRequests)
+                .HasForeignKey(d => d.adopterId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AdoptionRequests_Adopters");
+
+            entity.HasOne(d => d.pet)
+                .WithMany(p => p.AdoptionRequests)
+                .HasForeignKey(d => d.petId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AdoptionRequests_Pets");
+
+            entity.HasOne(d => d.status)
+                .WithMany(p => p.AdoptionRequests)
+                .HasForeignKey(d => d.statusId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AdoptionRequests_RequestStatuses");
+
+            entity.HasOne(d => d.reviewedByUser)
+                .WithMany(p => p.ReviewedAdoptionRequests)
+                .HasForeignKey(d => d.reviewedByUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_AdoptionRequests_ReviewedByUser");
+
+            entity.HasIndex(e => new { e.adopterId, e.petId }, "UX_AdoptionRequests_AdopterPet_Pending")
+                .IsUnique()
+                .HasFilter("([statusId]=(1))");
+
+            entity.HasIndex(e => e.petId, "UX_AdoptionRequests_OneApprovedPerPet")
+                .IsUnique()
+                .HasFilter("([statusId]=(2))");
+        });
+
+        modelBuilder.Entity<AuditLog>(entity =>
             {
                 entity.Property(e => e.actionDate).HasDefaultValueSql("(sysdatetime())", "DF_AuditLogs_ActionDate");
                 entity.Property(e => e.userName).HasDefaultValueSql("(suser_sname())", "DF_AuditLogs_UserName");
@@ -124,22 +153,39 @@
                 entity.HasOne(d => d.status).WithMany(p => p.Pets)
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("FK_Pets_PetStatuses");
+
+                entity.Property(e => e.isVaccinated)
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.isSterilized)
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.isDewormed)
+                    .HasDefaultValue(false);
+
+                entity.Property(e => e.medicalNotes)
+                    .HasMaxLength(1000);
             });
 
-            modelBuilder.Entity<PetImage>(entity =>
-            {
-                entity.HasKey(e => e.id).HasName("PK__PetImage__3213E83F3A04A786");
+             modelBuilder.Entity<PetImage>(entity =>
+                {
+                    entity.HasKey(e => e.id)
+                        .HasName("PK__PetImage__3213E83F3A04A786");
 
-                entity.HasIndex(e => e.petId, "UX_PetImages_OnePrimaryPerPet")
-                    .IsUnique()
-                    .HasFilter("([isPrimary]=(1))");
+                    entity.HasIndex(e => e.petId, "UX_PetImages_OnePrimaryPerPet")
+                        .IsUnique()
+                        .HasFilter("([isPrimary]=(1))");
 
-                entity.Property(e => e.createdAt).HasDefaultValueSql("(sysutcdatetime())");
+                    entity.Property(e => e.createdAt)
+                        .HasDefaultValueSql("(sysutcdatetime())");
 
-                entity.HasOne(d => d.pet).WithOne(p => p.PetImage).HasConstraintName("FK_PetImages_Pets");
-            });
+                    entity.HasOne(d => d.pet)
+                        .WithMany(p => p.PetImages)
+                        .HasForeignKey(d => d.petId)
+                        .HasConstraintName("FK_PetImages_Pets");
+                });
 
-            modelBuilder.Entity<PetStatus>(entity =>
+        modelBuilder.Entity<PetStatus>(entity =>
             {
                 entity.HasKey(e => e.id).HasName("PK__PetStatu__3213E83F784C9F3F");
             });
