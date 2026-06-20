@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
 namespace AdopcionDbAPI.Models;
@@ -34,4 +32,15 @@ public partial class vw_AvailablePet
     public string? description { get; set; }
 
     public DateTime createdAt { get; set; }
+
+    public bool isVaccinated { get; set; }
+
+    public bool isSterilized { get; set; }
+
+    public bool isDewormed { get; set; }
+
+    [StringLength(1000)]
+    public string? medicalNotes { get; set; }
+
+    public DateOnly? rescuedAt { get; set; }
 }

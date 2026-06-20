@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.EntityFrameworkCore;
-
 namespace AdopcionDbAPI.Models;
 
 public partial class AdoptionRequest
@@ -23,6 +20,13 @@ public partial class AdoptionRequest
 
     public int statusId { get; set; }
 
+    public int? reviewedByUserId { get; set; }
+
+    public DateTime? reviewedAt { get; set; }
+
+    [StringLength(1000)]
+    public string? decisionNotes { get; set; }
+
     [ForeignKey("adopterId")]
     [InverseProperty("AdoptionRequests")]
     public virtual Adopter adopter { get; set; } = null!;
@@ -34,4 +38,8 @@ public partial class AdoptionRequest
     [ForeignKey("statusId")]
     [InverseProperty("AdoptionRequests")]
     public virtual RequestStatus status { get; set; } = null!;
+
+    [ForeignKey("reviewedByUserId")]
+    [InverseProperty("ReviewedAdoptionRequests")]
+    public virtual User? reviewedByUser { get; set; }
 }
