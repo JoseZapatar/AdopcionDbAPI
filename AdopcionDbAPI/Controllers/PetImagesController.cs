@@ -62,7 +62,7 @@ public class PetImagesController : ControllerBase
 
     [HttpPost("pet/{petId:int}")]
     [Consumes("multipart/form-data")]
-    [Authorize (Roles = "Admin")]
+    [Authorize (Roles = "Admin, Administrador")]
     public async Task<ActionResult> UploadImage(int petId, [FromForm] UploadPetImageDto dto)
     {
         var petExists = await _context.Pets.AnyAsync(p => p.id == petId);
@@ -137,7 +137,7 @@ public class PetImagesController : ControllerBase
     }
 
     [HttpPut("{id:int}/set-primary")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> SetPrimaryImage(int id)
     {
         var image = await _context.PetImages
@@ -174,7 +174,7 @@ public class PetImagesController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> DeleteImage(int id)
     {
         var image = await _context.PetImages

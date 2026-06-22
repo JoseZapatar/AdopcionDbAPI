@@ -8,7 +8,6 @@ namespace AdopcionDbAPI.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "Admin")]
 public class ViewsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -19,6 +18,7 @@ public class ViewsController : ControllerBase
     }
 
     [HttpGet("adopters-profiles")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult<IEnumerable<vw_AdoptersProfile>>> GetAdoptersProfiles(
         [FromQuery] string? city,
         [FromQuery] string? search
@@ -47,6 +47,7 @@ public class ViewsController : ControllerBase
     }
 
     [HttpGet("adoption-request-details")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult<IEnumerable<vw_AdoptionRequestDetail>>> GetAdoptionRequestDetails(
         [FromQuery] string? status,
         [FromQuery] string? species,
@@ -83,7 +84,9 @@ public class ViewsController : ControllerBase
         return Ok(data);
     }
 
+    // ESTA ES LA IMPORTANTE PARA EL FRONTEND
     [HttpGet("available-pets")]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<vw_AvailablePet>>> GetAvailablePets(
         [FromQuery] string? species,
         [FromQuery] string? breed,
@@ -124,6 +127,7 @@ public class ViewsController : ControllerBase
     }
 
     [HttpGet("executive-adoption-report")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult<IEnumerable<vw_ExecutiveAdoptionReport>>> GetExecutiveAdoptionReport()
     {
         var data = await _context.vw_ExecutiveAdoptionReports
@@ -136,6 +140,7 @@ public class ViewsController : ControllerBase
     }
 
     [HttpGet("pet-review-summary")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult<IEnumerable<vw_PetReviewSummary>>> GetPetReviewSummary(
         [FromQuery] string? search
     )

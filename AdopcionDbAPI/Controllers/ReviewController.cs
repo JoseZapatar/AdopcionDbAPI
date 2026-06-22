@@ -98,7 +98,7 @@ public class ReviewsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Adopter,Adoptante")]
+    [Authorize(Roles = "Adopter,Adoptante, usuario")]
     public async Task<ActionResult> CreateReview(CreateReviewDto dto)
     {
         var userId = GetCurrentUserId();
@@ -168,7 +168,9 @@ public class ReviewsController : ControllerBase
         if (review == null)
             return NotFound("Review not found.");
 
-        var isAdmin = User.IsInRole("Admin");
+        var isAdmin =
+    User.IsInRole("admin") ||
+    User.IsInRole("Administrador");
 
         if (!isAdmin && review.userId != userId.Value)
             return Forbid();
@@ -199,7 +201,9 @@ public class ReviewsController : ControllerBase
         if (review == null)
             return NotFound("Review not found.");
 
-        var isAdmin = User.IsInRole("Admin");
+        var isAdmin =
+    User.IsInRole("admin") ||
+    User.IsInRole("Administrador");
 
         if (!isAdmin && review.userId != userId.Value)
             return Forbid();

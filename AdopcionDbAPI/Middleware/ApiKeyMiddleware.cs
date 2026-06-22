@@ -3,52 +3,55 @@
     public class ApiKeyMiddleware
     {
         private readonly RequestDelegate _next;
-        private const string HeaderName = "X-API-KEY";
 
-
-    public ApiKeyMiddleware(RequestDelegate next)
+        public ApiKeyMiddleware(RequestDelegate next)
         {
             _next = next;
         }
 
-        public async Task InvokeAsync(
-            HttpContext context,
-            IConfiguration configuration)
+        public async Task InvokeAsync(HttpContext context, IConfiguration configuration)
         {
-            if (!context.Request.Headers.TryGetValue(
-                HeaderName,
-                out var apiKeyHeader))
+            if (
+                context.Request.Method == "OPTIONS" ||
+                context.Request.Path.StartsWithSegments("/swagger") ||
+                context.Request.Path.StartsWithSegments("/api/Views/available-pets") ||
+                (
+                    context.Request.Path.StartsWithSegments("/api/PetImages") &&
+                    context.Request.Method == "GET"
+                )
+            )
             {
-                context.Response.StatusCode = 401;
-
-                await context.Response.WriteAsJsonAsync(
-                    new
-                    {
-                        message = "API Key requerida"
-                    });
-
+                await _next(context);
                 return;
             }
 
-            var apiKey =
-                configuration["ApiSettings:ApiKey"];
+            var extractedApiKey = context.Request.Headers
+                .FirstOrDefault(h =>
+                    h.Key.Equals("X-API-KEY", StringComparison.OrdinalIgnoreCase) ||
+                    h.Key.Equals("X-Api-Key", StringComparison.OrdinalIgnoreCase))
+                .Value
+                .ToString();
 
-            if (apiKey != apiKeyHeader)
+            if (string.IsNullOrWhiteSpace(extractedApiKey))
             {
-                context.Response.StatusCode = 403;
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { message = "API Key requerida" });
+                return;
+            }
 
-                await context.Response.WriteAsJsonAsync(
-                    new
-                    {
-                        message = "API Key inválida"
-                    });
+            var apiKey = configuration["ApiSettings:ApiKey"];
 
+            if (
+                string.IsNullOrWhiteSpace(apiKey) ||
+                extractedApiKey.Trim() != apiKey.Trim()
+            )
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { message = "API Key inválida" });
                 return;
             }
 
             await _next(context);
         }
     }
-
-
 }

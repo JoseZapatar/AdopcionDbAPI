@@ -62,6 +62,20 @@ public class AuthController : ControllerBase
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
+        var adopter = new Adopter
+        {
+            userId = user.id,
+            phone = dto.phone,
+            address = dto.address,
+            city = dto.city,
+            housingType = dto.housingType,
+            hasOtherPets = dto.hasOtherPets,
+            createdAt = DateTime.UtcNow
+        };
+
+        _context.Adopters.Add(adopter);
+        await _context.SaveChangesAsync();
+
         user.role = adopterRole;
 
         return Ok(CreateAuthResponse(user));

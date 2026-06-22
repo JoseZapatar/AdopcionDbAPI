@@ -19,7 +19,7 @@ public class AdoptionRequestsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult<IEnumerable<AdoptionRequestDto>>> GetAdoptionRequests(
         [FromQuery] int? adopterId,
         [FromQuery] int? petId,
@@ -116,7 +116,7 @@ public class AdoptionRequestsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Adopter,Adoptante")]
+    [Authorize(Roles = "Adopter,Adoptante, usuario")]
     public async Task<ActionResult> CreateAdoptionRequest(CreateAdoptionRequestDto dto)
     {
         var pendingStatusId = await GetRequestStatusId("Pendiente");
@@ -137,7 +137,7 @@ public class AdoptionRequestsController : ControllerBase
         if (pet == null)
             return BadRequest("Invalid petId.");
 
-        if (pet.status.name != "Disponible")
+        if (!pet.status.name.Equals("disponible", StringComparison.OrdinalIgnoreCase))
             return BadRequest("This pet is not available for adoption.");
 
         var alreadyPending = await _context.AdoptionRequests
@@ -178,14 +178,23 @@ public class AdoptionRequestsController : ControllerBase
     }
 
     [HttpPut("{id:int}/approve")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "admin,Administrador")]
     public async Task<ActionResult> ApproveAdoptionRequest(int id, ReviewAdoptionRequestDto dto)
     {
         var pendingStatusId = await GetRequestStatusId("Pendiente");
         var approvedStatusId = await GetRequestStatusId("Aprobada");
+        var cancelledStatusId = await GetRequestStatusId("Cancelada");
 
-        if (pendingStatusId == null || approvedStatusId == null)
+        if (pendingStatusId == null || approvedStatusId == null || cancelledStatusId == null)
             return BadRequest("Required request statuses were not found.");
+
+        var adoptedPetStatusId = await _context.PetStatuses
+            .Where(s => s.name.ToLower() == "adoptado")
+            .Select(s => (int?)s.id)
+            .FirstOrDefaultAsync();
+
+        if (adoptedPetStatusId == null)
+            return BadRequest("Pet status 'adoptado' was not found.");
 
         var reviewerExists = await _context.Users
             .AnyAsync(u => u.id == dto.reviewedByUserId);
@@ -194,6 +203,7 @@ public class AdoptionRequestsController : ControllerBase
             return BadRequest("Invalid reviewedByUserId.");
 
         var request = await _context.AdoptionRequests
+            .Include(r => r.pet)
             .FirstOrDefaultAsync(r => r.id == id);
 
         if (request == null)
@@ -201,6 +211,8 @@ public class AdoptionRequestsController : ControllerBase
 
         if (request.statusId != pendingStatusId.Value)
             return BadRequest("Only pending requests can be approved.");
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
 
         request.statusId = approvedStatusId.Value;
         request.reviewedByUserId = dto.reviewedByUserId;
@@ -210,24 +222,61 @@ public class AdoptionRequestsController : ControllerBase
             ? "Solicitud aprobada."
             : dto.decisionNotes.Trim();
 
-        try
+        request.pet.statusId = adoptedPetStatusId.Value;
+        request.pet.updatedAt = DateTime.UtcNow;
+
+        var otherPendingRequests = await _context.AdoptionRequests
+            .Where(r =>
+                r.petId == request.petId &&
+                r.id != request.id &&
+                r.statusId == pendingStatusId.Value
+            )
+            .ToListAsync();
+
+        foreach (var otherRequest in otherPendingRequests)
         {
-            await _context.SaveChangesAsync();
+            otherRequest.statusId = cancelledStatusId.Value;
+            otherRequest.reviewedByUserId = dto.reviewedByUserId;
+            otherRequest.reviewedAt = DateTime.UtcNow;
+            otherRequest.updatedAt = DateTime.UtcNow;
+            otherRequest.decisionNotes = "Solicitud cancelada porque la mascota ya fue adoptada.";
         }
-        catch (DbUpdateException)
-        {
-            return BadRequest("The request could not be approved. The pet may already have an approved request.");
-        }
+
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return Ok(new
         {
             message = "Adoption request approved successfully.",
-            requestId = request.id
+            requestId = request.id,
+            petId = request.petId,
+            cancelledRequests = otherPendingRequests.Count
         });
     }
 
+    [HttpGet("my-requests/{adopterId:int}")]
+    [Authorize]
+    public async Task<ActionResult> GetMyRequests(int adopterId)
+    {
+        var requests = await _context.AdoptionRequests
+            .Where(r => r.adopterId == adopterId)
+            .OrderByDescending(r => r.createdAt)
+            .Select(r => new
+            {
+                id = r.id,
+                petId = r.petId,
+                petName = r.pet.name,
+                status = r.status.name,
+                message = r.message,
+                createdAt = r.createdAt
+            })
+            .ToListAsync();
+
+        return Ok(requests);
+    }
+
     [HttpPut("{id:int}/reject")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> RejectAdoptionRequest(int id, ReviewAdoptionRequestDto dto)
     {
         var pendingStatusId = await GetRequestStatusId("Pendiente");
@@ -270,8 +319,10 @@ public class AdoptionRequestsController : ControllerBase
 
     private async Task<int?> GetRequestStatusId(string statusName)
     {
+        var normalized = statusName.ToLower();
+
         return await _context.RequestStatuses
-            .Where(s => s.name == statusName)
+            .Where(s => s.name.ToLower() == normalized)
             .Select(s => (int?)s.id)
             .FirstOrDefaultAsync();
     }

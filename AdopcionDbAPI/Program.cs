@@ -18,6 +18,17 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // CONTROLLERS
 builder.Services.AddControllers();
 
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("ReactCors", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173", "http://localhost:5174")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 // JWT
 var jwtKey = builder.Configuration["Jwt:Key"];
 
@@ -39,13 +50,10 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
         ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(
-            Encoding.UTF8.GetBytes(jwtKey)
-        ),
-
+            Encoding.UTF8.GetBytes(jwtKey)),
         ClockSkew = TimeSpan.Zero
     };
 });
@@ -67,7 +75,7 @@ builder.Services.AddSwaggerGen(options =>
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header. Pegá solo el token, sin escribir Bearer.",
+        Description = "JWT Authorization header. Pegá solo el token.",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.Http,
@@ -84,15 +92,16 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// SWAGGER
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// MIDDLEWARES
 app.UseMiddleware<ExceptionMiddleware>();
-app.UseMiddleware<ApiKeyMiddleware>();
 
-app.UseHttpsRedirection();
+app.UseRouting();
+
+app.UseCors("ReactCors");
+
+app.UseMiddleware<ApiKeyMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();

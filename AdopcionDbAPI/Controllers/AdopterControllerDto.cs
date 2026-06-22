@@ -20,7 +20,7 @@ public class AdoptersController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult<IEnumerable<AdopterDto>>> GetAdopters(
         [FromQuery] string? city,
         [FromQuery] string? search
@@ -191,7 +191,7 @@ public class AdoptersController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> DeleteAdopter(int id)
     {
         var adopter = await _context.Adopters.FindAsync(id);

@@ -122,7 +122,7 @@ public class PetsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> CreatePet(CreatePetDto dto)
     {
         var validationResult = await ValidatePetCatalogs(dto.speciesId, dto.sizeId, dto.statusId, dto.breedId);
@@ -159,7 +159,7 @@ public class PetsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> UpdatePet(int id, UpdatePetDto dto)
     {
         var pet = await _context.Pets.FindAsync(id);
@@ -197,7 +197,7 @@ public class PetsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> DeletePet(int id)
     {
         var pet = await _context.Pets.FindAsync(id);
