@@ -60,7 +60,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPost("species")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Administrador")]
     public async Task<ActionResult> CreateSpecies(UpsertCatalogItemDto dto)
     {
         var name = dto.name.Trim();
@@ -82,7 +82,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPut("species/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Administrador")]
     public async Task<ActionResult> UpdateSpecies(int id, UpsertCatalogItemDto dto)
     {
         var entity = await _context.Species.FindAsync(id);
@@ -104,7 +104,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpDelete("species/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Administrador")]
     public async Task<ActionResult> DeleteSpecies(int id)
     {
         var entity = await _context.Species.FindAsync(id);
@@ -198,7 +198,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPost("breeds")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin, Administrador")]
     public async Task<ActionResult> CreateBreed(UpsertBreedDto dto)
     {
         var name = dto.name.Trim();
@@ -233,7 +233,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPut("breeds/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> UpdateBreed(int id, UpsertBreedDto dto)
     {
         var entity = await _context.Breeds.FindAsync(id);
@@ -265,7 +265,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpDelete("breeds/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> DeleteBreed(int id)
     {
         var entity = await _context.Breeds.FindAsync(id);
@@ -329,7 +329,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPost("sizes")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> CreateSize(UpsertCatalogItemDto dto)
     {
         var name = dto.name.Trim();
@@ -351,7 +351,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPut("sizes/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> UpdateSize(int id, UpsertCatalogItemDto dto)
     {
         var entity = await _context.Sizes.FindAsync(id);
@@ -373,7 +373,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpDelete("sizes/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> DeleteSize(int id)
     {
         var entity = await _context.Sizes.FindAsync(id);
@@ -437,7 +437,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPost("pet-statuses")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> CreatePetStatus(UpsertCatalogItemDto dto)
     {
         var name = dto.name.Trim();
@@ -459,7 +459,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPut("pet-statuses/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> UpdatePetStatus(int id, UpsertCatalogItemDto dto)
     {
         var entity = await _context.PetStatuses.FindAsync(id);
@@ -481,7 +481,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpDelete("pet-statuses/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> DeletePetStatus(int id)
     {
         var entity = await _context.PetStatuses.FindAsync(id);
@@ -508,7 +508,7 @@ public class CatalogsController : ControllerBase
     // =========================
 
     [HttpGet("request-statuses")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult<IEnumerable<CatalogItemDto>>> GetRequestStatuses()
     {
         var data = await _context.RequestStatuses
@@ -525,7 +525,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpGet("request-statuses/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult<CatalogItemDto>> GetRequestStatusById(int id)
     {
         var item = await _context.RequestStatuses
@@ -545,7 +545,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPost("request-statuses")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> CreateRequestStatus(UpsertCatalogItemDto dto)
     {
         var name = dto.name.Trim();
@@ -567,7 +567,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPut("request-statuses/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> UpdateRequestStatus(int id, UpsertCatalogItemDto dto)
     {
         var entity = await _context.RequestStatuses.FindAsync(id);
@@ -589,7 +589,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpDelete("request-statuses/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> DeleteRequestStatus(int id)
     {
         var entity = await _context.RequestStatuses.FindAsync(id);
@@ -616,7 +616,7 @@ public class CatalogsController : ControllerBase
     // =========================
 
     [HttpGet("roles")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult<IEnumerable<CatalogItemDto>>> GetRoles()
     {
         var data = await _context.Roles
@@ -633,7 +633,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpGet("roles/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult<CatalogItemDto>> GetRoleById(int id)
     {
         var item = await _context.Roles
@@ -653,7 +653,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPost("roles")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> CreateRole(UpsertCatalogItemDto dto)
     {
         var name = dto.name.Trim();
@@ -675,7 +675,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpPut("roles/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> UpdateRole(int id, UpsertCatalogItemDto dto)
     {
         var entity = await _context.Roles.FindAsync(id);
@@ -697,7 +697,7 @@ public class CatalogsController : ControllerBase
     }
 
     [HttpDelete("roles/{id:int}")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin , Administrador")]
     public async Task<ActionResult> DeleteRole(int id)
     {
         var entity = await _context.Roles.FindAsync(id);
