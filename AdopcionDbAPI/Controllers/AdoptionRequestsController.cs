@@ -1,9 +1,10 @@
-﻿using AdopcionDbAPI.Context;
+using AdopcionDbAPI.Context;
 using AdopcionDbAPI.DTOs.AdoptionRequests;
 using AdopcionDbAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace AdopcionDbAPI.Controllers;
 
@@ -19,7 +20,7 @@ public class AdoptionRequestsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Roles = "Admin, Administrador")]
+    [Authorize(Roles = "Admin,Administrador")]
     public async Task<ActionResult<IEnumerable<AdoptionRequestDto>>> GetAdoptionRequests(
         [FromQuery] int? adopterId,
         [FromQuery] int? petId,
@@ -44,25 +45,20 @@ public class AdoptionRequestsController : ControllerBase
             .Select(r => new AdoptionRequestDto
             {
                 id = r.id,
-
                 adopterId = r.adopterId,
                 adopterName = r.adopter.user.name,
                 adopterEmail = r.adopter.user.email,
                 adopterPhone = r.adopter.phone,
                 adopterCity = r.adopter.city,
-
                 petId = r.petId,
                 petName = r.pet.name,
                 speciesName = r.pet.species.name,
                 breedName = r.pet.breed != null ? r.pet.breed.name : null,
-
                 statusId = r.statusId,
                 requestStatus = r.status.name,
-
                 message = r.message,
                 createdAt = r.createdAt,
                 updatedAt = r.updatedAt,
-
                 reviewedByUserId = r.reviewedByUserId,
                 reviewedByUserName = r.reviewedByUser != null ? r.reviewedByUser.name : null,
                 reviewedAt = r.reviewedAt,
@@ -83,25 +79,20 @@ public class AdoptionRequestsController : ControllerBase
             .Select(r => new AdoptionRequestDto
             {
                 id = r.id,
-
                 adopterId = r.adopterId,
                 adopterName = r.adopter.user.name,
                 adopterEmail = r.adopter.user.email,
                 adopterPhone = r.adopter.phone,
                 adopterCity = r.adopter.city,
-
                 petId = r.petId,
                 petName = r.pet.name,
                 speciesName = r.pet.species.name,
                 breedName = r.pet.breed != null ? r.pet.breed.name : null,
-
                 statusId = r.statusId,
                 requestStatus = r.status.name,
-
                 message = r.message,
                 createdAt = r.createdAt,
                 updatedAt = r.updatedAt,
-
                 reviewedByUserId = r.reviewedByUserId,
                 reviewedByUserName = r.reviewedByUser != null ? r.reviewedByUser.name : null,
                 reviewedAt = r.reviewedAt,
@@ -116,16 +107,21 @@ public class AdoptionRequestsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Adopter,Adoptante, usuario")]
-    public async Task<ActionResult> CreateAdoptionRequest(CreateAdoptionRequestDto dto)
+    [Authorize(Roles = "Adopter,Adoptante")]
+    public async Task<IActionResult> CreateAdoptionRequest(CreateAdoptionRequestDto dto)
     {
         var pendingStatusId = await GetRequestStatusId("Pendiente");
 
         if (pendingStatusId == null)
             return BadRequest("Pending request status was not found.");
 
+        var currentUserId = GetCurrentUserId();
+
+        if (currentUserId == null)
+            return Unauthorized("Invalid token.");
+
         var adopterExists = await _context.Adopters
-            .AnyAsync(a => a.id == dto.adopterId);
+            .AnyAsync(a => a.id == dto.adopterId && a.userId == currentUserId.Value);
 
         if (!adopterExists)
             return BadRequest("Invalid adopterId.");
@@ -177,9 +173,89 @@ public class AdoptionRequestsController : ControllerBase
         });
     }
 
+    [HttpGet("my-requests/{adopterId:int}")]
+    [Authorize(Roles = "Adopter,Adoptante")]
+    public async Task<IActionResult> GetMyRequests(int adopterId)
+    {
+        var currentUserId = GetCurrentUserId();
+
+        if (currentUserId == null)
+            return Unauthorized("Invalid token.");
+
+        var ownsAdopter = await _context.Adopters
+            .AnyAsync(a => a.id == adopterId && a.userId == currentUserId.Value);
+
+        if (!ownsAdopter)
+            return Forbid();
+
+        var requests = await _context.AdoptionRequests
+            .Where(r => r.adopterId == adopterId)
+            .OrderByDescending(r => r.createdAt)
+            .Select(r => new
+            {
+                id = r.id,
+                petId = r.petId,
+                petName = r.pet.name,
+                status = r.status.name,
+                message = r.message,
+                decisionNotes = r.decisionNotes,
+                createdAt = r.createdAt,
+                updatedAt = r.updatedAt,
+                primaryImageId = r.pet.PetImages
+                    .Where(i => i.isPrimary)
+                    .Select(i => (int?)i.id)
+                    .FirstOrDefault()
+            })
+            .ToListAsync();
+
+        return Ok(requests);
+    }
+
+    [HttpGet("my-history/{adopterId:int}")]
+    [Authorize(Roles = "Adopter,Adoptante")]
+    public async Task<IActionResult> GetMyHistory(int adopterId)
+    {
+        var currentUserId = GetCurrentUserId();
+
+        if (currentUserId == null)
+            return Unauthorized("Invalid token.");
+
+        var ownsAdopter = await _context.Adopters
+            .AnyAsync(a => a.id == adopterId && a.userId == currentUserId.Value);
+
+        if (!ownsAdopter)
+            return Forbid();
+
+        var history = await _context.AdoptionRequests
+            .AsNoTracking()
+            .Where(r => r.adopterId == adopterId)
+            .Where(r => r.status.name.ToLower() == "aprobada")
+            .OrderByDescending(r => r.reviewedAt ?? r.updatedAt ?? r.createdAt)
+            .Select(r => new
+            {
+                id = r.id,
+                petId = r.petId,
+                petName = r.pet.name,
+                speciesName = r.pet.species.name,
+                breedName = r.pet.breed != null ? r.pet.breed.name : null,
+                message = r.message,
+                decisionNotes = r.decisionNotes,
+                adoptedAt = r.reviewedAt ?? r.updatedAt ?? r.createdAt,
+                publisherUserId = r.pet.publisherUserId,
+                publisherName = r.pet.publisherUser != null ? r.pet.publisherUser.name : null,
+                primaryImageId = r.pet.PetImages
+                    .Where(i => i.isPrimary)
+                    .Select(i => (int?)i.id)
+                    .FirstOrDefault()
+            })
+            .ToListAsync();
+
+        return Ok(history);
+    }
+
     [HttpPut("{id:int}/approve")]
-    [Authorize(Roles = "admin,Administrador")]
-    public async Task<ActionResult> ApproveAdoptionRequest(int id, ReviewAdoptionRequestDto dto)
+    [Authorize(Roles = "Admin,Administrador")]
+    public async Task<IActionResult> ApproveAdoptionRequest(int id, ReviewAdoptionRequestDto dto)
     {
         var pendingStatusId = await GetRequestStatusId("Pendiente");
         var approvedStatusId = await GetRequestStatusId("Aprobada");
@@ -254,30 +330,9 @@ public class AdoptionRequestsController : ControllerBase
         });
     }
 
-    [HttpGet("my-requests/{adopterId:int}")]
-    [Authorize]
-    public async Task<ActionResult> GetMyRequests(int adopterId)
-    {
-        var requests = await _context.AdoptionRequests
-            .Where(r => r.adopterId == adopterId)
-            .OrderByDescending(r => r.createdAt)
-            .Select(r => new
-            {
-                id = r.id,
-                petId = r.petId,
-                petName = r.pet.name,
-                status = r.status.name,
-                message = r.message,
-                createdAt = r.createdAt
-            })
-            .ToListAsync();
-
-        return Ok(requests);
-    }
-
     [HttpPut("{id:int}/reject")]
-    [Authorize(Roles = "Admin, Administrador")]
-    public async Task<ActionResult> RejectAdoptionRequest(int id, ReviewAdoptionRequestDto dto)
+    [Authorize(Roles = "Admin,Administrador")]
+    public async Task<IActionResult> RejectAdoptionRequest(int id, ReviewAdoptionRequestDto dto)
     {
         var pendingStatusId = await GetRequestStatusId("Pendiente");
         var rejectedStatusId = await GetRequestStatusId("Rechazada");
@@ -315,6 +370,16 @@ public class AdoptionRequestsController : ControllerBase
             message = "Adoption request rejected successfully.",
             requestId = request.id
         });
+    }
+
+    private int? GetCurrentUserId()
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!int.TryParse(userIdValue, out var userId))
+            return null;
+
+        return userId;
     }
 
     private async Task<int?> GetRequestStatusId(string statusName)

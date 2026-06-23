@@ -17,6 +17,8 @@ public partial class Pet
 
     public int statusId { get; set; }
 
+    public int? publisherUserId { get; set; }
+
     [StringLength(100)]
     public string name { get; set; } = null!;
 
@@ -68,4 +70,7 @@ public partial class Pet
     [ForeignKey("statusId")]
     [InverseProperty("Pets")]
     public virtual PetStatus status { get; set; } = null!;
+
+    [ForeignKey("publisherUserId")]
+    public virtual User? publisherUser { get; set; }
 }

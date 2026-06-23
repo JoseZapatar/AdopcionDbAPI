@@ -1,4 +1,4 @@
-﻿using AdopcionDbAPI.Context;
+using AdopcionDbAPI.Context;
 using AdopcionDbAPI.DTOs.Auth;
 using AdopcionDbAPI.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -39,20 +39,31 @@ public class AuthController : ControllerBase
         if (emailExists)
             return BadRequest("Email already exists.");
 
-        var adopterRole = await _context.Roles
-            .FirstOrDefaultAsync(r => r.name == "Adopter" || r.name == "Adoptante");
+        var accountType = dto.accountType?.Trim().ToLower();
 
-        if (adopterRole == null)
-            adopterRole = await _context.Roles.FirstOrDefaultAsync(r => r.id == 2);
+        if (string.IsNullOrWhiteSpace(accountType))
+            accountType = "adoptar";
 
-        if (adopterRole == null)
-            return BadRequest("Default adopter role was not found.");
+        if (accountType != "adoptar" && accountType != "dar")
+            return BadRequest("Invalid account type.");
+
+        var wantsToAdopt = accountType == "adoptar";
+
+        var selectedRole = wantsToAdopt
+            ? await _context.Roles.FirstOrDefaultAsync(r => r.name.ToLower() == "adoptante")
+            : await _context.Roles.FirstOrDefaultAsync(r => r.name.ToLower() == "publicador");
+
+        if (selectedRole == null)
+        {
+            var roleMessage = wantsToAdopt ? "adoptante" : "publicador";
+            return BadRequest($"Default {roleMessage} role was not found.");
+        }
 
         var user = new User
         {
             name = dto.name.Trim(),
             email = email,
-            roleId = adopterRole.id,
+            roleId = selectedRole.id,
             passwordHash = "",
             createdAt = DateTime.UtcNow
         };
@@ -62,21 +73,24 @@ public class AuthController : ControllerBase
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
-        var adopter = new Adopter
+        if (wantsToAdopt)
         {
-            userId = user.id,
-            phone = dto.phone,
-            address = dto.address,
-            city = dto.city,
-            housingType = dto.housingType,
-            hasOtherPets = dto.hasOtherPets,
-            createdAt = DateTime.UtcNow
-        };
+            var adopter = new Adopter
+            {
+                userId = user.id,
+                phone = dto.phone,
+                address = dto.address,
+                city = dto.city,
+                housingType = dto.housingType,
+                hasOtherPets = dto.hasOtherPets,
+                createdAt = DateTime.UtcNow
+            };
 
-        _context.Adopters.Add(adopter);
-        await _context.SaveChangesAsync();
+            _context.Adopters.Add(adopter);
+            await _context.SaveChangesAsync();
+        }
 
-        user.role = adopterRole;
+        user.role = selectedRole;
 
         return Ok(CreateAuthResponse(user));
     }
@@ -94,11 +108,20 @@ public class AuthController : ControllerBase
         if (user == null)
             return Unauthorized("Invalid email or password.");
 
-        var result = _passwordHasher.VerifyHashedPassword(
-            user,
-            user.passwordHash,
-            dto.password
-        );
+        PasswordVerificationResult result;
+
+        try
+        {
+            result = _passwordHasher.VerifyHashedPassword(
+                user,
+                user.passwordHash,
+                dto.password
+            );
+        }
+        catch (FormatException)
+        {
+            return Unauthorized("Invalid email or password.");
+        }
 
         if (result == PasswordVerificationResult.Failed)
             return Unauthorized("Invalid email or password.");

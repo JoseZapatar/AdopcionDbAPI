@@ -14,7 +14,9 @@
 
         public virtual DbSet<Adopter> Adopters { get; set; }
 
-        public virtual DbSet<AdoptionRequest> AdoptionRequests { get; set; }
+    public virtual DbSet<Recommendation> Recommendations { get; set; }
+
+    public virtual DbSet<AdoptionRequest> AdoptionRequests { get; set; }
 
         public virtual DbSet<AuditLog> AuditLogs { get; set; }
 
@@ -262,7 +264,24 @@
                 entity.ToView("vw_PetReviewSummary");
             });
 
-            OnModelCreatingPartial(modelBuilder);
+        modelBuilder.Entity<Recommendation>(entity =>
+        {
+            entity.HasKey(e => e.id).HasName("PK_Recommendations");
+
+            entity.Property(e => e.name).HasMaxLength(100);
+            entity.Property(e => e.email).HasMaxLength(150);
+            entity.Property(e => e.status).HasMaxLength(30).HasDefaultValue("Pendiente");
+            entity.Property(e => e.adminNotes).HasMaxLength(1000);
+            entity.Property(e => e.createdAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.user)
+                .WithMany()
+                .HasForeignKey(d => d.userId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("FK_Recommendations_Users");
+        });
+
+        OnModelCreatingPartial(modelBuilder);
         }
 
         partial void OnModelCreatingPartial(ModelBuilder modelBuilder);

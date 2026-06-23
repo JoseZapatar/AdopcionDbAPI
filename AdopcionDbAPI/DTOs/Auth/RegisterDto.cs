@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace AdopcionDbAPI.DTOs.Auth;
 
@@ -16,6 +16,9 @@ public class RegisterDto
     [Required]
     [MinLength(6)]
     public string password { get; set; } = null!;
+
+    [StringLength(20)]
+    public string accountType { get; set; } = "adoptar";
 
     [StringLength(30)]
     public string? phone { get; set; }

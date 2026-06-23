@@ -38,4 +38,6 @@ public partial class Adopter
     [ForeignKey("userId")]
     [InverseProperty("Adopter")]
     public virtual User user { get; set; } = null!;
+
+
 }
