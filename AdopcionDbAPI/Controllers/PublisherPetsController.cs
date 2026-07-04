@@ -9,7 +9,7 @@ namespace AdopcionDbAPI.Controllers;
 
 [Route("api/[controller]")]
 [ApiController]
-[Authorize(Roles = "Publicador")]
+[Authorize(Roles = "Publicador,Admin,Administrador,Revisor de publicadores,Revisor publicadores,Publisher Reviewer,PublisherReviewer")]
 public class PublisherPetsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -20,6 +20,7 @@ public class PublisherPetsController : ControllerBase
     }
 
     [HttpGet("my-pets")]
+    [Authorize(Roles = "Publicador")]
     public async Task<IActionResult> GetMyPets()
     {
         var userId = GetCurrentUserId();
@@ -64,6 +65,9 @@ public class PublisherPetsController : ControllerBase
     [HttpGet("requests")]
     public async Task<IActionResult> GetRequests()
     {
+        if (CanReviewPublisherApplicants())
+            return await GetPublisherApplicantRequests();
+
         var userId = GetCurrentUserId();
 
         if (userId == null)
@@ -97,6 +101,7 @@ public class PublisherPetsController : ControllerBase
     }
 
     [HttpGet("history")]
+    [Authorize(Roles = "Publicador")]
     public async Task<IActionResult> GetHistory()
     {
         var userId = GetCurrentUserId();
@@ -134,6 +139,7 @@ public class PublisherPetsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = "Publicador")]
     public async Task<IActionResult> CreatePet(CreatePublisherPetDto dto)
     {
         var userId = GetCurrentUserId();
@@ -184,6 +190,7 @@ public class PublisherPetsController : ControllerBase
     }
 
     [HttpPost("{petId:int}/image")]
+    [Authorize(Roles = "Publicador")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadImage(int petId, [FromForm] UploadPublisherPetImageDto dto)
     {
@@ -258,6 +265,9 @@ public class PublisherPetsController : ControllerBase
     [HttpPut("requests/{requestId:int}/approve")]
     public async Task<IActionResult> ApproveRequest(int requestId, PublisherReviewRequestDto dto)
     {
+        if (CanReviewPublisherApplicants())
+            return await ApprovePublisherApplicant(requestId);
+
         var userId = GetCurrentUserId();
 
         if (userId == null)
@@ -332,6 +342,9 @@ public class PublisherPetsController : ControllerBase
     [HttpPut("requests/{requestId:int}/reject")]
     public async Task<IActionResult> RejectRequest(int requestId, PublisherReviewRequestDto dto)
     {
+        if (CanReviewPublisherApplicants())
+            return await RejectPublisherApplicant(requestId, dto);
+
         var userId = GetCurrentUserId();
 
         if (userId == null)
@@ -378,6 +391,112 @@ public class PublisherPetsController : ControllerBase
             return null;
 
         return userId;
+    }
+
+    private bool CanReviewPublisherApplicants()
+    {
+        return User.IsInRole("Admin") ||
+               User.IsInRole("Administrador") ||
+               User.IsInRole("Revisor de publicadores") ||
+               User.IsInRole("Revisor publicadores") ||
+               User.IsInRole("Publisher Reviewer") ||
+               User.IsInRole("PublisherReviewer");
+    }
+
+    private async Task<IActionResult> GetPublisherApplicantRequests()
+    {
+        var applicants = await _context.Users
+            .AsNoTracking()
+            .Include(u => u.role)
+            .Where(u => u.role.name.ToLower() == "solicitantepublicador")
+            .OrderByDescending(u => u.createdAt)
+            .Select(u => new
+            {
+                id = u.id,
+                petId = 0,
+                petName = "Solicitud de publicador",
+                adopterId = u.id,
+                adopterName = u.name,
+                adopterEmail = u.email,
+                adopterPhone = (string?)null,
+                adopterCity = (string?)null,
+                message = "Persona solicitando acceso para publicar mascotas.",
+                statusId = u.roleId,
+                requestStatus = "Pendiente",
+                createdAt = u.createdAt,
+                updatedAt = (DateTime?)null,
+                decisionNotes = (string?)null
+            })
+            .ToListAsync();
+
+        return Ok(applicants);
+    }
+
+    private async Task<IActionResult> ApprovePublisherApplicant(int userId)
+    {
+        var applicant = await _context.Users
+            .Include(u => u.role)
+            .FirstOrDefaultAsync(u =>
+                u.id == userId &&
+                u.role.name.ToLower() == "solicitantepublicador");
+
+        if (applicant == null)
+            return NotFound("Publisher applicant not found.");
+
+        var publisherRole = await GetOrCreateRole("Publicador");
+
+        applicant.roleId = publisherRole.id;
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Publisher applicant approved successfully. The existing credentials can now access the publisher panel.",
+            userId = applicant.id,
+            email = applicant.email
+        });
+    }
+
+    private async Task<IActionResult> RejectPublisherApplicant(int userId, PublisherReviewRequestDto dto)
+    {
+        var applicant = await _context.Users
+            .Include(u => u.role)
+            .FirstOrDefaultAsync(u =>
+                u.id == userId &&
+                u.role.name.ToLower() == "solicitantepublicador");
+
+        if (applicant == null)
+            return NotFound("Publisher applicant not found.");
+
+        var adopterRole = await GetOrCreateRole("Adoptante");
+
+        applicant.roleId = adopterRole.id;
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = string.IsNullOrWhiteSpace(dto.decisionNotes)
+                ? "Publisher applicant rejected successfully."
+                : dto.decisionNotes.Trim(),
+            userId = applicant.id,
+            email = applicant.email
+        });
+    }
+
+    private async Task<Role> GetOrCreateRole(string name)
+    {
+        var normalized = name.ToLower();
+
+        var role = await _context.Roles
+            .FirstOrDefaultAsync(r => r.name.ToLower() == normalized);
+
+        if (role != null)
+            return role;
+
+        role = new Role { name = name };
+        _context.Roles.Add(role);
+        await _context.SaveChangesAsync();
+
+        return role;
     }
 
     private async Task<int?> GetRequestStatusId(string statusName)

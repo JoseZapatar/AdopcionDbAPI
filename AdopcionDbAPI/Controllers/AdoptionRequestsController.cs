@@ -107,7 +107,7 @@ public class AdoptionRequestsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "Adopter,Adoptante")]
+    [AllowAnonymous]
     public async Task<IActionResult> CreateAdoptionRequest(CreateAdoptionRequestDto dto)
     {
         var pendingStatusId = await GetRequestStatusId("Pendiente");
@@ -116,15 +116,6 @@ public class AdoptionRequestsController : ControllerBase
             return BadRequest("Pending request status was not found.");
 
         var currentUserId = GetCurrentUserId();
-
-        if (currentUserId == null)
-            return Unauthorized("Invalid token.");
-
-        var adopterExists = await _context.Adopters
-            .AnyAsync(a => a.id == dto.adopterId && a.userId == currentUserId.Value);
-
-        if (!adopterExists)
-            return BadRequest("Invalid adopterId.");
 
         var pet = await _context.Pets
             .Include(p => p.status)
@@ -136,9 +127,34 @@ public class AdoptionRequestsController : ControllerBase
         if (!pet.status.name.Equals("disponible", StringComparison.OrdinalIgnoreCase))
             return BadRequest("This pet is not available for adoption.");
 
+        Adopter? adopter;
+
+        if (dto.adopterId.HasValue)
+        {
+            if (currentUserId == null)
+                return Unauthorized("Invalid token.");
+
+            adopter = await _context.Adopters
+                .FirstOrDefaultAsync(a => a.id == dto.adopterId.Value && a.userId == currentUserId.Value);
+
+            if (adopter == null)
+                return BadRequest("Invalid adopterId.");
+        }
+        else
+        {
+            try
+            {
+                adopter = await GetOrCreatePublicAdopter(dto);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         var alreadyPending = await _context.AdoptionRequests
             .AnyAsync(r =>
-                r.adopterId == dto.adopterId &&
+                r.adopterId == adopter.id &&
                 r.petId == dto.petId &&
                 r.statusId == pendingStatusId.Value
             );
@@ -148,7 +164,7 @@ public class AdoptionRequestsController : ControllerBase
 
         var request = new AdoptionRequest
         {
-            adopterId = dto.adopterId,
+            adopterId = adopter.id,
             petId = dto.petId,
             message = dto.message,
             statusId = pendingStatusId.Value,
@@ -171,6 +187,71 @@ public class AdoptionRequestsController : ControllerBase
             message = "Adoption request created successfully.",
             requestId = request.id
         });
+    }
+
+    private async Task<Adopter> GetOrCreatePublicAdopter(CreateAdoptionRequestDto dto)
+    {
+        var name = dto.adopterName?.Trim();
+        var email = dto.adopterEmail?.Trim().ToLower();
+
+        if (string.IsNullOrWhiteSpace(name))
+            throw new InvalidOperationException("Adopter name is required.");
+
+        if (string.IsNullOrWhiteSpace(email))
+            throw new InvalidOperationException("Adopter email is required.");
+
+        var user = await _context.Users
+            .Include(u => u.Adopter)
+            .FirstOrDefaultAsync(u => u.email.ToLower() == email);
+
+        if (user == null)
+        {
+            var adopterRole = await _context.Roles
+                .FirstOrDefaultAsync(r => r.name.ToLower() == "adoptante" || r.name.ToLower() == "adopter");
+
+            if (adopterRole == null)
+                throw new InvalidOperationException("Default adopter role was not found.");
+
+            user = new User
+            {
+                name = name,
+                email = email,
+                roleId = adopterRole.id,
+                passwordHash = "PUBLIC_ADOPTER_NO_PASSWORD",
+                createdAt = DateTime.UtcNow
+            };
+
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+        }
+
+        if (user.Adopter != null)
+        {
+            user.Adopter.phone = dto.adopterPhone ?? user.Adopter.phone;
+            user.Adopter.address = dto.address ?? user.Adopter.address;
+            user.Adopter.city = dto.adopterCity ?? user.Adopter.city;
+            user.Adopter.housingType = dto.housingType ?? user.Adopter.housingType;
+            user.Adopter.hasOtherPets = dto.hasOtherPets;
+            user.Adopter.updatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return user.Adopter;
+        }
+
+        var adopter = new Adopter
+        {
+            userId = user.id,
+            phone = dto.adopterPhone,
+            address = dto.address,
+            city = dto.adopterCity,
+            housingType = dto.housingType,
+            hasOtherPets = dto.hasOtherPets,
+            createdAt = DateTime.UtcNow
+        };
+
+        _context.Adopters.Add(adopter);
+        await _context.SaveChangesAsync();
+
+        return adopter;
     }
 
     [HttpGet("my-requests/{adopterId:int}")]

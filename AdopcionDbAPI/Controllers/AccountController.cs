@@ -48,6 +48,19 @@ public class AccountController : ControllerBase
             .AsNoTracking()
             .FirstOrDefaultAsync(a => a.userId == user.id);
 
+        var publisherRequest = await _context.PublisherRequests
+            .AsNoTracking()
+            .Where(r => r.userId == user.id)
+            .OrderByDescending(r => r.requestedAt)
+            .Select(r => new
+            {
+                id = r.id,
+                status = r.status,
+                requestedAt = r.requestedAt,
+                reviewedAt = r.reviewedAt
+            })
+            .FirstOrDefaultAsync();
+
         return Ok(new
         {
             user = new AuthUserDto
@@ -66,7 +79,8 @@ public class AccountController : ControllerBase
                 city = adopter.city,
                 housingType = adopter.housingType,
                 hasOtherPets = adopter.hasOtherPets
-            }
+            },
+            publisherRequest
         });
     }
 
@@ -177,13 +191,38 @@ public class AccountController : ControllerBase
         if (accountType != "adoptar" && accountType != "dar")
             return BadRequest("Invalid account type.");
 
-        var targetRoleName = accountType == "adoptar" ? "adoptante" : "publicador";
+        if (accountType == "dar")
+        {
+            var hasApprovedPublisherRequest = await _context.PublisherRequests
+                .AnyAsync(r =>
+                    r.userId == user.id &&
+                    r.status.ToLower() == "aprobada"
+                );
+
+            if (currentRole != "publicador" && !hasApprovedPublisherRequest)
+            {
+                return BadRequest("La cuenta publicadora solo se activa cuando un administrador aprueba tu solicitud de publicador.");
+            }
+
+            var publisherRole = await _context.Roles
+                .FirstOrDefaultAsync(r => r.name.ToLower() == "publicador");
+
+            if (publisherRole == null)
+                return BadRequest("Role 'publicador' was not found.");
+
+            user.roleId = publisherRole.id;
+            await _context.SaveChangesAsync();
+
+            user.role = publisherRole;
+
+            return Ok(CreateAuthResponse(user));
+        }
 
         var targetRole = await _context.Roles
-            .FirstOrDefaultAsync(r => r.name.ToLower() == targetRoleName);
+            .FirstOrDefaultAsync(r => r.name.ToLower() == "adoptante");
 
         if (targetRole == null)
-            return BadRequest($"Role '{targetRoleName}' was not found.");
+            return BadRequest("Role 'adoptante' was not found.");
 
         user.roleId = targetRole.id;
 
@@ -222,6 +261,66 @@ public class AccountController : ControllerBase
         user.role = targetRole;
 
         return Ok(CreateAuthResponse(user));
+    }
+
+    [HttpPost("publisher-request")]
+    public async Task<IActionResult> RequestPublisherAccess([FromForm] PublisherAccessRequestDto dto)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId == null)
+            return Unauthorized("Invalid token.");
+
+        var user = await _context.Users
+            .Include(u => u.role)
+            .FirstOrDefaultAsync(u => u.id == userId.Value);
+
+        if (user == null)
+            return NotFound("User not found.");
+
+        var currentRole = user.role.name.ToLower();
+
+        if (currentRole == "admin" || currentRole == "administrador")
+            return BadRequest("Las cuentas administradoras no solicitan acceso de publicador.");
+
+        if (currentRole == "publicador")
+            return BadRequest("Tu cuenta ya tiene acceso de publicador.");
+
+        if (!dto.acceptsResponsibility)
+            return BadRequest("Debes aceptar la responsabilidad de publicar informacion real.");
+
+        var hasPendingRequest = await _context.PublisherRequests
+            .AnyAsync(r => r.userId == user.id && r.status.ToLower() == "pendiente");
+
+        if (hasPendingRequest)
+            return BadRequest("Ya tienes una solicitud de publicador pendiente.");
+
+        var imageValidationError = ValidateIdentificationImage(dto.identificationImage);
+
+        if (imageValidationError != null)
+            return BadRequest(imageValidationError);
+
+        using var memoryStream = new MemoryStream();
+        await dto.identificationImage!.CopyToAsync(memoryStream);
+
+        var publisherRequest = new PublisherRequest
+        {
+            userId = user.id,
+            status = "Pendiente",
+            requestedAt = DateTime.UtcNow,
+            decisionNotes = BuildPublisherRequestNotes(dto),
+            identificationImageData = memoryStream.ToArray(),
+            identificationImageContentType = dto.identificationImage.ContentType
+        };
+
+        _context.PublisherRequests.Add(publisherRequest);
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Solicitud de publicador enviada correctamente.",
+            requestId = publisherRequest.id
+        });
     }
 
     private int? GetCurrentUserId()
@@ -284,6 +383,45 @@ public class AccountController : ControllerBase
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    private static string? ValidateIdentificationImage(IFormFile? image)
+    {
+        if (image == null || image.Length == 0)
+            return "La foto de cedula es obligatoria para solicitar cuenta de publicador.";
+
+        var allowedContentTypes = new[] { "image/jpeg", "image/png", "image/webp" };
+
+        if (!allowedContentTypes.Contains(image.ContentType))
+            return "La cedula debe ser una imagen JPEG, PNG o WEBP.";
+
+        const long maxFileSize = 5 * 1024 * 1024;
+
+        if (image.Length > maxFileSize)
+            return "La imagen de cedula no puede exceder 5 MB.";
+
+        return null;
+    }
+
+    private static string BuildPublisherRequestNotes(PublisherAccessRequestDto dto)
+    {
+        var notes = string.Join("\n", new[]
+        {
+            $"Nombre legal: {dto.legalName}",
+            $"Telefono: {dto.phone}",
+            $"Ciudad: {dto.city}",
+            $"Direccion: {dto.address}",
+            $"Tipos de mascotas: {dto.animalTypes}",
+            $"Capacidad mensual: {dto.monthlyCapacity}",
+            $"Experiencia: {dto.experience}",
+            $"Espacio/refugio: {dto.facilityType}",
+            $"Disponibilidad: {dto.availability}",
+            $"Referencia: {dto.referenceContact}",
+            $"Tiene transporte: {(dto.hasTransport ? "Si" : "No")}",
+            $"Motivo: {dto.motivation}"
+        });
+
+        return notes.Length > 1000 ? notes[..1000] : notes;
+    }
 }
 
 public class UpdateProfileDto
@@ -313,4 +451,35 @@ public class SwitchAccountRoleDto
     public string? housingType { get; set; }
 
     public bool hasOtherPets { get; set; }
+}
+
+public class PublisherAccessRequestDto
+{
+    public string legalName { get; set; } = string.Empty;
+
+    public string phone { get; set; } = string.Empty;
+
+    public string city { get; set; } = string.Empty;
+
+    public string address { get; set; } = string.Empty;
+
+    public string experience { get; set; } = string.Empty;
+
+    public string animalTypes { get; set; } = string.Empty;
+
+    public string monthlyCapacity { get; set; } = string.Empty;
+
+    public string facilityType { get; set; } = string.Empty;
+
+    public string availability { get; set; } = string.Empty;
+
+    public string motivation { get; set; } = string.Empty;
+
+    public string referenceContact { get; set; } = string.Empty;
+
+    public bool hasTransport { get; set; }
+
+    public bool acceptsResponsibility { get; set; }
+
+    public IFormFile? identificationImage { get; set; }
 }
