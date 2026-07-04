@@ -29,7 +29,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("register")]
     [AllowAnonymous]
-    public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto dto)
+    public async Task<ActionResult<AuthResponseDto>> Register([FromForm] RegisterDto dto)
     {
         var email = dto.email.Trim().ToLower();
 
@@ -49,14 +49,11 @@ public class AuthController : ControllerBase
 
         var wantsToAdopt = accountType == "adoptar";
 
-        var selectedRole = wantsToAdopt
-            ? await _context.Roles.FirstOrDefaultAsync(r => r.name.ToLower() == "adoptante")
-            : await _context.Roles.FirstOrDefaultAsync(r => r.name.ToLower() == "publicador");
+        var selectedRole = await GetOrCreateRole("Adoptante");
 
         if (selectedRole == null)
         {
-            var roleMessage = wantsToAdopt ? "adoptante" : "publicador";
-            return BadRequest($"Default {roleMessage} role was not found.");
+            return BadRequest("Default adoptante role was not found.");
         }
 
         var user = new User
@@ -87,6 +84,40 @@ public class AuthController : ControllerBase
             };
 
             _context.Adopters.Add(adopter);
+            await _context.SaveChangesAsync();
+        }
+        else
+        {
+            if (!dto.acceptsResponsibility)
+                return BadRequest("Debes aceptar la responsabilidad de publicar informacion real.");
+
+            if (dto.identificationImage == null || dto.identificationImage.Length == 0)
+                return BadRequest("La foto de cedula es obligatoria para solicitar cuenta de publicador.");
+
+            var allowedContentTypes = new[] { "image/jpeg", "image/png", "image/webp" };
+
+            if (!allowedContentTypes.Contains(dto.identificationImage.ContentType))
+                return BadRequest("La cedula debe ser una imagen JPEG, PNG o WEBP.");
+
+            const long maxFileSize = 5 * 1024 * 1024;
+
+            if (dto.identificationImage.Length > maxFileSize)
+                return BadRequest("La imagen de cedula no puede exceder 5 MB.");
+
+            using var memoryStream = new MemoryStream();
+            await dto.identificationImage.CopyToAsync(memoryStream);
+
+            var publisherRequest = new PublisherRequest
+            {
+                userId = user.id,
+                status = "Pendiente",
+                requestedAt = DateTime.UtcNow,
+                decisionNotes = BuildPublisherRequestNotes(dto),
+                identificationImageData = memoryStream.ToArray(),
+                identificationImageContentType = dto.identificationImage.ContentType
+            };
+
+            _context.PublisherRequests.Add(publisherRequest);
             await _context.SaveChangesAsync();
         }
 
@@ -178,6 +209,44 @@ public class AuthController : ControllerBase
                 roleName = user.role.name
             }
         };
+    }
+
+    private async Task<Role> GetOrCreateRole(string name)
+    {
+        var normalized = name.ToLower();
+
+        var role = await _context.Roles
+            .FirstOrDefaultAsync(r => r.name.ToLower() == normalized);
+
+        if (role != null)
+            return role;
+
+        role = new Role { name = name };
+        _context.Roles.Add(role);
+        await _context.SaveChangesAsync();
+
+        return role;
+    }
+
+    private static string BuildPublisherRequestNotes(RegisterDto dto)
+    {
+        var notes = string.Join("\n", new[]
+        {
+            $"Nombre legal: {dto.legalName}",
+            $"Telefono: {dto.phone}",
+            $"Ciudad: {dto.city}",
+            $"Direccion: {dto.address}",
+            $"Tipos de mascotas: {dto.animalTypes}",
+            $"Capacidad mensual: {dto.monthlyCapacity}",
+            $"Experiencia: {dto.experience}",
+            $"Espacio/refugio: {dto.facilityType}",
+            $"Disponibilidad: {dto.availability}",
+            $"Referencia: {dto.referenceContact}",
+            $"Tiene transporte: {(dto.hasTransport ? "Si" : "No")}",
+            $"Motivo: {dto.motivation}"
+        });
+
+        return notes.Length > 1000 ? notes[..1000] : notes;
     }
 
     private string GenerateJwtToken(User user, DateTime expiresAt)

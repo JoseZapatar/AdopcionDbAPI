@@ -34,6 +34,12 @@ public partial class User
     [InverseProperty("reviewedByUser")]
     public virtual ICollection<AdoptionRequest> ReviewedAdoptionRequests { get; set; } = new List<AdoptionRequest>();
 
+    [InverseProperty("user")]
+    public virtual ICollection<PublisherRequest> PublisherRequests { get; set; } = new List<PublisherRequest>();
+
+    [InverseProperty("reviewedByUser")]
+    public virtual ICollection<PublisherRequest> ReviewedPublisherRequests { get; set; } = new List<PublisherRequest>();
+
     [ForeignKey("roleId")]
     [InverseProperty("Users")]
     public virtual Role role { get; set; } = null!;

@@ -33,4 +33,34 @@ public class RegisterDto
     public string? housingType { get; set; }
 
     public bool hasOtherPets { get; set; }
+
+    [StringLength(150)]
+    public string? legalName { get; set; }
+
+    [StringLength(1000)]
+    public string? experience { get; set; }
+
+    [StringLength(255)]
+    public string? animalTypes { get; set; }
+
+    [StringLength(50)]
+    public string? monthlyCapacity { get; set; }
+
+    [StringLength(500)]
+    public string? facilityType { get; set; }
+
+    [StringLength(255)]
+    public string? availability { get; set; }
+
+    [StringLength(500)]
+    public string? motivation { get; set; }
+
+    [StringLength(255)]
+    public string? referenceContact { get; set; }
+
+    public bool hasTransport { get; set; }
+
+    public bool acceptsResponsibility { get; set; }
+
+    public IFormFile? identificationImage { get; set; }
 }

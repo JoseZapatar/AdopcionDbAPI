@@ -28,6 +28,8 @@
 
         public virtual DbSet<PetStatus> PetStatuses { get; set; }
 
+        public virtual DbSet<PublisherRequest> PublisherRequests { get; set; }
+
         public virtual DbSet<RequestStatus> RequestStatuses { get; set; }
 
         public virtual DbSet<Review> Reviews { get; set; }
@@ -186,6 +188,35 @@
                         .HasForeignKey(d => d.petId)
                         .HasConstraintName("FK_PetImages_Pets");
                 });
+
+        modelBuilder.Entity<PublisherRequest>(entity =>
+        {
+            entity.HasKey(e => e.id).HasName("PK_PublisherRequests");
+
+            entity.Property(e => e.status).HasMaxLength(30).HasDefaultValue("Pendiente");
+            entity.Property(e => e.decisionNotes).HasMaxLength(1000);
+            entity.Property(e => e.identificationImageContentType).HasMaxLength(100);
+            entity.Property(e => e.requestedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasIndex(e => e.userId, "IX_PublisherRequests_UserId");
+            entity.HasIndex(e => e.reviewedByUserId, "IX_PublisherRequests_ReviewedByUserId");
+
+            entity.HasIndex(e => e.userId, "UX_PublisherRequests_User_Pending")
+                .IsUnique()
+                .HasFilter("([status]=N'Pendiente')");
+
+            entity.HasOne(d => d.user)
+                .WithMany(p => p.PublisherRequests)
+                .HasForeignKey(d => d.userId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PublisherRequests_Users");
+
+            entity.HasOne(d => d.reviewedByUser)
+                .WithMany(p => p.ReviewedPublisherRequests)
+                .HasForeignKey(d => d.reviewedByUserId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_PublisherRequests_ReviewedByUser");
+        });
 
         modelBuilder.Entity<PetStatus>(entity =>
             {
