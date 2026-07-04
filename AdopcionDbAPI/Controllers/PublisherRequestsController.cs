@@ -102,6 +102,7 @@ public class PublisherRequestsController : ControllerBase
             : dto.decisionNotes.Trim();
 
         request.user.roleId = publisherRole.id;
+        request.user.role = publisherRole;
 
         await _context.SaveChangesAsync();
 
@@ -110,7 +111,9 @@ public class PublisherRequestsController : ControllerBase
             message = "Publisher request approved successfully.",
             requestId = request.id,
             userId = request.userId,
-            email = request.user.email
+            email = request.user.email,
+            roleId = publisherRole.id,
+            roleName = publisherRole.name
         });
     }
 
@@ -207,3 +210,8 @@ public class ReviewPublisherRequestDto
 {
     public string? decisionNotes { get; set; }
 }
+
+
+
+
+
