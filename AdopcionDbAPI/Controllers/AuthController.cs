@@ -16,6 +16,8 @@ namespace AdopcionDbAPI.Controllers;
 [ApiController]
 public class AuthController : ControllerBase
 {
+    private const string PublicAdopterPasswordHash = "PUBLIC_ADOPTER_NO_PASSWORD";
+
     private readonly AppDbContext _context;
     private readonly PasswordHasher<User> _passwordHasher;
     private readonly IConfiguration _configuration;
@@ -32,13 +34,6 @@ public class AuthController : ControllerBase
     public async Task<ActionResult<AuthResponseDto>> Register([FromForm] RegisterDto dto)
     {
         var email = dto.email.Trim().ToLower();
-
-        var emailExists = await _context.Users
-            .AnyAsync(u => u.email.ToLower() == email);
-
-        if (emailExists)
-            return BadRequest("Email already exists.");
-
         var accountType = dto.accountType?.Trim().ToLower();
 
         if (string.IsNullOrWhiteSpace(accountType))
@@ -49,6 +44,14 @@ public class AuthController : ControllerBase
 
         var wantsToAdopt = accountType == "adoptar";
 
+        if (!wantsToAdopt)
+        {
+            var publisherValidationMessage = ValidatePublisherRegistration(dto);
+
+            if (publisherValidationMessage != null)
+                return BadRequest(publisherValidationMessage);
+        }
+
         var selectedRole = await GetOrCreateRole("Adoptante");
 
         if (selectedRole == null)
@@ -56,67 +59,45 @@ public class AuthController : ControllerBase
             return BadRequest("Default adoptante role was not found.");
         }
 
-        var user = new User
+        var user = await _context.Users
+            .Include(u => u.Adopter)
+            .FirstOrDefaultAsync(u => u.email.ToLower() == email);
+
+        if (user != null && user.passwordHash != PublicAdopterPasswordHash)
+            return BadRequest("Email already exists.");
+
+        if (user == null)
         {
-            name = dto.name.Trim(),
-            email = email,
-            roleId = selectedRole.id,
-            passwordHash = "",
-            createdAt = DateTime.UtcNow
-        };
-
-        user.passwordHash = _passwordHasher.HashPassword(user, dto.password);
-
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
-
-        if (wantsToAdopt)
-        {
-            var adopter = new Adopter
+            user = new User
             {
-                userId = user.id,
-                phone = dto.phone,
-                address = dto.address,
-                city = dto.city,
-                housingType = dto.housingType,
-                hasOtherPets = dto.hasOtherPets,
+                name = dto.name.Trim(),
+                email = email,
+                roleId = selectedRole.id,
+                passwordHash = "",
                 createdAt = DateTime.UtcNow
             };
 
-            _context.Adopters.Add(adopter);
+            user.passwordHash = _passwordHasher.HashPassword(user, dto.password);
+
+            _context.Users.Add(user);
             await _context.SaveChangesAsync();
         }
         else
         {
-            if (!dto.acceptsResponsibility)
-                return BadRequest("Debes aceptar la responsabilidad de publicar informacion real.");
+            user.name = dto.name.Trim();
+            user.roleId = selectedRole.id;
+            user.passwordHash = _passwordHasher.HashPassword(user, dto.password);
+        }
 
-            if (dto.identificationImage == null || dto.identificationImage.Length == 0)
-                return BadRequest("La foto de cedula es obligatoria para solicitar cuenta de publicador.");
+        UpsertAdopterProfile(user, dto);
 
-            var allowedContentTypes = new[] { "image/jpeg", "image/png", "image/webp" };
-
-            if (!allowedContentTypes.Contains(dto.identificationImage.ContentType))
-                return BadRequest("La cedula debe ser una imagen JPEG, PNG o WEBP.");
-
-            const long maxFileSize = 5 * 1024 * 1024;
-
-            if (dto.identificationImage.Length > maxFileSize)
-                return BadRequest("La imagen de cedula no puede exceder 5 MB.");
-
-            using var memoryStream = new MemoryStream();
-            await dto.identificationImage.CopyToAsync(memoryStream);
-
-            var publisherRequest = new PublisherRequest
-            {
-                userId = user.id,
-                status = "Pendiente",
-                requestedAt = DateTime.UtcNow,
-                decisionNotes = BuildPublisherRequestNotes(dto),
-                identificationImageData = memoryStream.ToArray(),
-                identificationImageContentType = dto.identificationImage.ContentType
-            };
-
+        if (wantsToAdopt)
+        {
+            await _context.SaveChangesAsync();
+        }
+        else
+        {
+            var publisherRequest = await CreatePublisherRequest(user.id, dto);
             _context.PublisherRequests.Add(publisherRequest);
             await _context.SaveChangesAsync();
         }
@@ -124,6 +105,68 @@ public class AuthController : ControllerBase
         user.role = selectedRole;
 
         return Ok(CreateAuthResponse(user));
+    }
+
+    private void UpsertAdopterProfile(User user, RegisterDto dto)
+    {
+        if (user.Adopter != null)
+        {
+            user.Adopter.phone = dto.phone ?? user.Adopter.phone;
+            user.Adopter.address = dto.address ?? user.Adopter.address;
+            user.Adopter.city = dto.city ?? user.Adopter.city;
+            user.Adopter.housingType = dto.housingType ?? user.Adopter.housingType;
+            user.Adopter.hasOtherPets = dto.hasOtherPets;
+            user.Adopter.updatedAt = DateTime.UtcNow;
+            return;
+        }
+
+        _context.Adopters.Add(new Adopter
+        {
+            userId = user.id,
+            phone = dto.phone,
+            address = dto.address,
+            city = dto.city,
+            housingType = dto.housingType,
+            hasOtherPets = dto.hasOtherPets,
+            createdAt = DateTime.UtcNow
+        });
+    }
+
+    private static string? ValidatePublisherRegistration(RegisterDto dto)
+    {
+        if (!dto.acceptsResponsibility)
+            return "Debes aceptar la responsabilidad de publicar informacion real.";
+
+        if (dto.identificationImage == null || dto.identificationImage.Length == 0)
+            return "La foto de cedula es obligatoria para solicitar cuenta de publicador.";
+
+        var allowedContentTypes = new[] { "image/jpeg", "image/png", "image/webp" };
+
+        if (!allowedContentTypes.Contains(dto.identificationImage.ContentType))
+            return "La cedula debe ser una imagen JPEG, PNG o WEBP.";
+
+        const long maxFileSize = 5 * 1024 * 1024;
+
+        if (dto.identificationImage.Length > maxFileSize)
+            return "La imagen de cedula no puede exceder 5 MB.";
+
+        return null;
+    }
+
+    private static async Task<PublisherRequest> CreatePublisherRequest(int userId, RegisterDto dto)
+    {
+        using var memoryStream = new MemoryStream();
+        await dto.identificationImage!.CopyToAsync(memoryStream);
+
+        return new PublisherRequest
+        {
+            userId = userId,
+            status = "Pendiente",
+            requestedAt = DateTime.UtcNow,
+            decisionNotes = BuildPublisherRequestNotes(dto),
+            identificationImageData = memoryStream.ToArray(),
+            identificationImageContentType = dto.identificationImage.ContentType
+        };
     }
 
     [HttpPost("login")]

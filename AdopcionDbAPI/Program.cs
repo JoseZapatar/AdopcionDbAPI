@@ -1,5 +1,6 @@
 using AdopcionDbAPI.Context;
 using AdopcionDbAPI.Middleware;
+using AdopcionDbAPI.Services.Email;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -17,6 +18,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // CONTROLLERS
 builder.Services.AddControllers();
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 
 // CORS
 builder.Services.AddCors(options =>

@@ -285,6 +285,9 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
+# Local development settings
+AdopcionDbAPI/appsettings.Development.json
+
 # Visual Studio 6 build log
 *.plg
 

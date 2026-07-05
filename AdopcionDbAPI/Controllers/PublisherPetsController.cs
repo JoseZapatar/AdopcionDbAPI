@@ -189,6 +189,90 @@ public class PublisherPetsController : ControllerBase
         });
     }
 
+    [HttpGet("{petId:int}")]
+    [Authorize(Roles = "Publicador")]
+    public async Task<IActionResult> GetMyPet(int petId)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId == null)
+            return Unauthorized("Invalid token.");
+
+        var pet = await _context.Pets
+            .AsNoTracking()
+            .Where(p => p.id == petId && p.publisherUserId == userId.Value)
+            .Select(p => new
+            {
+                id = p.id,
+                name = p.name,
+                gender = p.gender,
+                speciesId = p.speciesId,
+                breedId = p.breedId,
+                sizeId = p.sizeId,
+                birthDate = p.birthDate,
+                rescuedAt = p.rescuedAt,
+                description = p.description,
+                medicalNotes = p.medicalNotes,
+                isVaccinated = p.isVaccinated,
+                isSterilized = p.isSterilized,
+                isDewormed = p.isDewormed,
+                statusName = p.status.name,
+                primaryImageId = p.PetImages
+                    .Where(i => i.isPrimary)
+                    .Select(i => (int?)i.id)
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync();
+
+        if (pet == null)
+            return NotFound("Pet not found.");
+
+        return Ok(pet);
+    }
+
+    [HttpPut("{petId:int}")]
+    [Authorize(Roles = "Publicador")]
+    public async Task<IActionResult> UpdatePet(int petId, CreatePublisherPetDto dto)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId == null)
+            return Unauthorized("Invalid token.");
+
+        var pet = await _context.Pets
+            .FirstOrDefaultAsync(p => p.id == petId && p.publisherUserId == userId.Value);
+
+        if (pet == null)
+            return NotFound("Pet not found.");
+
+        var validationResult = await ValidatePetCatalogs(dto.speciesId, dto.sizeId, dto.breedId);
+
+        if (validationResult != null)
+            return validationResult;
+
+        pet.speciesId = dto.speciesId;
+        pet.breedId = dto.breedId;
+        pet.sizeId = dto.sizeId;
+        pet.name = dto.name.Trim();
+        pet.gender = dto.gender;
+        pet.description = dto.description;
+        pet.birthDate = dto.birthDate;
+        pet.isVaccinated = dto.isVaccinated;
+        pet.isSterilized = dto.isSterilized;
+        pet.isDewormed = dto.isDewormed;
+        pet.medicalNotes = dto.medicalNotes;
+        pet.rescuedAt = dto.rescuedAt;
+        pet.updatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Pet updated successfully.",
+            petId = pet.id
+        });
+    }
+
     [HttpPost("{petId:int}/image")]
     [Authorize(Roles = "Publicador")]
     [Consumes("multipart/form-data")]

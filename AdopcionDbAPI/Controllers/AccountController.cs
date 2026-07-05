@@ -17,6 +17,10 @@ namespace AdopcionDbAPI.Controllers;
 [Authorize]
 public class AccountController : ControllerBase
 {
+    private const int MonthlyRoleSwitchLimit = 3;
+    private const string RoleSwitchAuditTable = "Users";
+    private const string RoleSwitchAuditAction = "SwitchRole";
+
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly PasswordHasher<User> _passwordHasher;
@@ -191,6 +195,31 @@ public class AccountController : ControllerBase
         if (accountType != "adoptar" && accountType != "dar")
             return BadRequest("Invalid account type.");
 
+        var targetRoleName = accountType == "dar" ? "publicador" : "adoptante";
+        var isRoleChange = currentRole != targetRoleName;
+
+        if (accountType == "adoptar" && currentRole == "publicador")
+        {
+            var activePublicationsCount = await CountActivePublisherPets(user.id);
+
+            if (activePublicationsCount > 0)
+            {
+                return BadRequest(
+                    $"No puedes cambiar a adoptante mientras tengas {activePublicationsCount} publicacion(es) activa(s). Marca esas mascotas como adoptadas o no disponibles antes de cambiar."
+                );
+            }
+        }
+
+        if (isRoleChange)
+        {
+            var switchesThisMonth = await CountRoleSwitchesThisMonth(user.id);
+
+            if (switchesThisMonth >= MonthlyRoleSwitchLimit)
+            {
+                return BadRequest("Alcanzaste el limite de 3 cambios de tipo de cuenta este mes.");
+            }
+        }
+
         if (accountType == "dar")
         {
             var hasApprovedPublisherRequest = await _context.PublisherRequests
@@ -210,7 +239,9 @@ public class AccountController : ControllerBase
             if (publisherRole == null)
                 return BadRequest("Role 'publicador' was not found.");
 
+            var previousRoleName = user.role.name;
             user.roleId = publisherRole.id;
+            AddRoleSwitchAuditLog(user, previousRoleName, publisherRole.name, isRoleChange);
             await _context.SaveChangesAsync();
 
             user.role = publisherRole;
@@ -225,6 +256,7 @@ public class AccountController : ControllerBase
             return BadRequest("Role 'adoptante' was not found.");
 
         user.roleId = targetRole.id;
+        AddRoleSwitchAuditLog(user, user.role.name, targetRole.name, isRoleChange);
 
         if (accountType == "adoptar")
         {
@@ -261,6 +293,49 @@ public class AccountController : ControllerBase
         user.role = targetRole;
 
         return Ok(CreateAuthResponse(user));
+    }
+
+    private async Task<int> CountActivePublisherPets(int userId)
+    {
+        return await _context.Pets.CountAsync(p =>
+            p.publisherUserId == userId &&
+            p.status.name.ToLower() != "adoptado" &&
+            p.status.name.ToLower() != "no disponible"
+        );
+    }
+
+    private async Task<int> CountRoleSwitchesThisMonth(int userId)
+    {
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        return await _context.AuditLogs.CountAsync(log =>
+            log.tableName == RoleSwitchAuditTable &&
+            log.actionName == RoleSwitchAuditAction &&
+            log.recordId == userId &&
+            log.actionDate >= monthStart
+        );
+    }
+
+    private void AddRoleSwitchAuditLog(
+        User user,
+        string previousRoleName,
+        string nextRoleName,
+        bool isRoleChange
+    )
+    {
+        if (!isRoleChange)
+            return;
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            tableName = RoleSwitchAuditTable,
+            actionName = RoleSwitchAuditAction,
+            recordId = user.id,
+            userName = user.email,
+            actionDate = DateTime.UtcNow,
+            details = $"Cambio de rol: {previousRoleName} -> {nextRoleName}"
+        });
     }
 
     [HttpPost("publisher-request")]

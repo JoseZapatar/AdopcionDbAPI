@@ -1,6 +1,7 @@
 using AdopcionDbAPI.Context;
 using AdopcionDbAPI.DTOs.AdoptionRequests;
 using AdopcionDbAPI.Models;
+using AdopcionDbAPI.Services.Email;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +14,18 @@ namespace AdopcionDbAPI.Controllers;
 public class AdoptionRequestsController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<AdoptionRequestsController> _logger;
 
-    public AdoptionRequestsController(AppDbContext context)
+    public AdoptionRequestsController(
+        AppDbContext context,
+        IEmailService emailService,
+        ILogger<AdoptionRequestsController> logger
+    )
     {
         _context = context;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -361,6 +370,8 @@ public class AdoptionRequestsController : ControllerBase
 
         var request = await _context.AdoptionRequests
             .Include(r => r.pet)
+            .Include(r => r.adopter)
+                .ThenInclude(a => a.user)
             .FirstOrDefaultAsync(r => r.id == id);
 
         if (request == null)
@@ -383,6 +394,9 @@ public class AdoptionRequestsController : ControllerBase
         request.pet.updatedAt = DateTime.UtcNow;
 
         var otherPendingRequests = await _context.AdoptionRequests
+            .Include(r => r.pet)
+            .Include(r => r.adopter)
+                .ThenInclude(a => a.user)
             .Where(r =>
                 r.petId == request.petId &&
                 r.id != request.id &&
@@ -401,6 +415,21 @@ public class AdoptionRequestsController : ControllerBase
 
         await _context.SaveChangesAsync();
         await transaction.CommitAsync();
+
+        await SendAdoptionDecisionEmailAsync(
+            request,
+            "aprobada",
+            request.decisionNotes
+        );
+
+        foreach (var otherRequest in otherPendingRequests)
+        {
+            await SendAdoptionDecisionEmailAsync(
+                otherRequest,
+                "cancelada",
+                otherRequest.decisionNotes
+            );
+        }
 
         return Ok(new
         {
@@ -428,6 +457,9 @@ public class AdoptionRequestsController : ControllerBase
             return BadRequest("Invalid reviewedByUserId.");
 
         var request = await _context.AdoptionRequests
+            .Include(r => r.pet)
+            .Include(r => r.adopter)
+                .ThenInclude(a => a.user)
             .FirstOrDefaultAsync(r => r.id == id);
 
         if (request == null)
@@ -445,6 +477,12 @@ public class AdoptionRequestsController : ControllerBase
             : dto.decisionNotes.Trim();
 
         await _context.SaveChangesAsync();
+
+        await SendAdoptionDecisionEmailAsync(
+            request,
+            "rechazada",
+            request.decisionNotes
+        );
 
         return Ok(new
         {
@@ -471,5 +509,59 @@ public class AdoptionRequestsController : ControllerBase
             .Where(s => s.name.ToLower() == normalized)
             .Select(s => (int?)s.id)
             .FirstOrDefaultAsync();
+    }
+
+    private async Task SendAdoptionDecisionEmailAsync(
+        AdoptionRequest request,
+        string decisionStatus,
+        string? decisionNotes
+    )
+    {
+        var recipientEmail = request.adopter.user.email;
+
+        if (string.IsNullOrWhiteSpace(recipientEmail))
+            return;
+
+        var petName = request.pet?.name ?? "la mascota solicitada";
+        var adopterName = request.adopter.user.name;
+        var notes = string.IsNullOrWhiteSpace(decisionNotes)
+            ? "No se agregaron notas adicionales."
+            : decisionNotes.Trim();
+
+        var subject = decisionStatus switch
+        {
+            "aprobada" => $"Tu solicitud de adopcion para {petName} fue aprobada",
+            "rechazada" => $"Tu solicitud de adopcion para {petName} fue rechazada",
+            "cancelada" => $"Tu solicitud de adopcion para {petName} fue cancelada",
+            _ => $"Actualizacion de tu solicitud de adopcion para {petName}"
+        };
+
+        var body = string.Join(Environment.NewLine, new[]
+        {
+            $"Hola {adopterName},",
+            "",
+            $"Tu solicitud de adopcion para {petName} fue {decisionStatus}.",
+            "",
+            $"Notas: {notes}",
+            "",
+            "Gracias por usar PetAdopt."
+        });
+
+        try
+        {
+            await _emailService.SendAsync(new EmailMessage(
+                recipientEmail,
+                subject,
+                body
+            ));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Could not send adoption decision email for request {RequestId}.",
+                request.id
+            );
+        }
     }
 }
